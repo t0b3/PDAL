@@ -3,7 +3,7 @@
 #
 
 function(pdal_target_compile_settings target)
-    set_property(TARGET ${target} PROPERTY CXX_STANDARD 11)
+    set_property(TARGET ${target} PROPERTY CXX_STANDARD 17)
     set_property(TARGET ${target} PROPERTY CXX_STANDARD_REQUIRED TRUE)
     target_compile_definitions(${target} PRIVATE
         -DWIN32_LEAN_AND_MEAN
@@ -39,7 +39,11 @@ function(pdal_target_compile_settings target)
 #                /wd4530
                 # Standard C++-type exception handling.
                 /EHsc
+
+                # _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+                /wd4996
                 )
+
         endif()
 
         # check for MSVC 9+
@@ -64,9 +68,7 @@ endfunction()
 #
 set(WINSOCK_LIBRARY ws2_32)
 
-IF(DEFINED ENV{OSGEO4W_HOME})
-	set(CMAKE_INCLUDE_PATH "c:/OSGeo4W64/include;$ENV{CMAKE_INCLUDE_PATH}")
-	set(CMAKE_LIBRARY_PATH "c:/OSGeo4W64/lib;$ENV{CMAKE_LIBRARY_PATH}")
-    set(CMAKE_PREFIX_PATH "c:/OSGeo4W64/cmake;$ENV{CMAKE_LIBRARY_PATH}")
-ENDIF()
+function(pdal_lib_compile_settings target)
+    pdal_target_compile_settings(${target})
+endfunction()
 

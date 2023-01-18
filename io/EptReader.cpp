@@ -94,6 +94,7 @@ public:
     NL::json m_query;
     NL::json m_headers;
     NL::json m_ogr;
+    bool m_ignoreUnreadable = false;
 };
 
 struct EptReader::Private
@@ -135,6 +136,8 @@ void EptReader::addArgs(ProgramArgs& args)
     args.add("header", "Header fields to forward with HTTP requests", m_args->m_headers);
     args.add("query", "Query parameters to forward with HTTP requests", m_args->m_query);
     args.add("ogr", "OGR filter geometries", m_args->m_ogr);
+    args.add("ignore_unreadable", "Ignore errors for missing point data nodes",
+        m_args->m_ignoreUnreadable);
 }
 
 
@@ -278,7 +281,27 @@ void EptReader::handleOriginQuery()
     log()->get(LogLevel::Debug) << "Searching sources for " << search <<
         std::endl;
 
-    std::string filename = m_p->info->sourcesDir() + "list.json";
+
+    // In the initial EPT version 1.0.0, a source-file summary was stored in
+    // "list.json", with detailed metadata for each file being stored together
+    // in chunks.  So, the list.json array entries contained both a URL (to the
+    // proper chunk) and an ID (for the key into that chunk object) in order to
+    // look up the detailed metadata for an entry.
+    //
+    // In version 1.1.0, this chunking indirection was removed, with each
+    // summary entry containing a "metadataPath" key pointing to detailed
+    // metadata for a single source file only.  This summary file is called
+    // "manifest.json", so the older version can coexist with the new version
+    // non-destructively.
+    //
+    // At the moment, we only care about the summary information, which contains
+    // both the original file path and the bounds, and in each of these summary
+    // formats, those specific entries are exactly the same.  So we just need to
+    // grab the right filename and can use the same logic thereafter.
+    std::string filename = m_p->info->version() == "1.0.0"
+        ? m_p->info->sourcesDir() + "list.json"
+        : m_p->info->sourcesDir() + "manifest.json";
+
     NL::json sources;
     try
     {
@@ -310,7 +333,10 @@ void EptReader::handleOriginQuery()
         for (size_t i = 0; i < sources.size(); ++i)
         {
             const NL::json& el = sources.at(i);
-            if (el["id"].get<std::string>().find(search) != std::string::npos)
+            if (
+                el.count("path") &&
+                el.at("path").get<std::string>().find(search) !=
+                    std::string::npos)
             {
                 if (m_queryOriginId != -1)
                     throwError("Origin search ID is not unique.");
@@ -336,7 +362,7 @@ void EptReader::handleOriginQuery()
 
     try
     {
-        BOX3D q(toBox3d(found["bounds"]));
+        BOX3D q(toBox3d(found.at("bounds")));
 
         if (m_p->bounds.box.valid())
             m_p->bounds.box.clip(q);
@@ -344,7 +370,7 @@ void EptReader::handleOriginQuery()
             m_p->bounds.box = q;
 
         log()->get(LogLevel::Debug) << "Query origin " << m_queryOriginId <<
-            ": " << found["id"].get<std::string>() << std::endl;
+            ": " << found.at("path").get<std::string>() << std::endl;
     }
     catch (std::exception& e)
     {
@@ -431,12 +457,32 @@ void EptReader::load(const ept::Overlap& overlap)
         {
             // Read the tile.
             ept::TileContents tile(overlap, *m_p->info, *m_p->connector, m_p->addons);
+
             tile.read();
 
-            // Put the tile on the output queue.
-            std::unique_lock<std::mutex> l(m_p->mutex);
-            m_p->contents.push(std::move(tile));
-            l.unlock();
+            if (tile.error().size())
+            {
+                log()->get(LogLevel::Warning) << "Failed to read " <<
+                    tile.key().toString() << ": " << tile.error() << std::endl;
+            }
+
+            if (tile.error().empty() || !m_args->m_ignoreUnreadable)
+            {
+                // Put the tile on the output queue.  Note that if the tile has
+                // an error and ignoreUnreadable isn't set, this will be fatal
+                // but that will occur downstream outside of this pool thread.
+                std::unique_lock<std::mutex> l(m_p->mutex);
+                m_p->contents.push(std::move(tile));
+                l.unlock();
+            }
+            else
+            {
+                // If the tile has an error, and the ignoreUnreadable option is
+                // set, then we just skip this tile.
+                std::lock_guard<std::mutex> l(m_p->mutex);
+                --m_tileCount;
+            }
+
             m_p->contentsCv.notify_one();
         }
     );
@@ -652,7 +698,11 @@ void EptReader::checkTile(const ept::TileContents& tile)
     if (tile.error().size())
     {
         m_p->pool->stop();
-        throwError("Error reading tile: " + tile.error());
+        log()->get(LogLevel::Warning) <<
+            "Use readers.ept.ignore_unreadable to ignore this error" <<
+            std::endl;
+        throwError("Error reading tile " + tile.key().toString() + ": " +
+            tile.error());
     }
 }
 
@@ -768,7 +818,7 @@ point_count_t EptReader::read(PointViewPtr view, point_count_t count)
                 numRead += tile.size();
                 m_tileCount--;
             }
-            else
+            else if (m_tileCount)
                 m_p->contentsCv.wait(l);
         } while (m_tileCount && numRead <= count);
     }
@@ -806,6 +856,11 @@ void EptReader::process(PointViewPtr dstView, const ept::TileContents& tile,
     }
 }
 
+void EptReader::done(PointTableRef)
+{
+    m_p->connector.reset();
+}
+
 
 bool EptReader::processOne(PointRef& point)
 {
@@ -826,6 +881,8 @@ top:
                 m_p->contents.pop();
                 break;
             }
+            else if (!m_tileCount)
+                return false;
             else
                 m_p->contentsCv.wait(l);
         } while (true);

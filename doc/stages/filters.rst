@@ -44,6 +44,7 @@ Ground/Unclassified
    filters.pmf
    filters.skewnessbalancing
    filters.smrf
+   filters.trajectory
 
 :ref:`filters.csf`
     Label ground/non-ground returns using [Zhang2016]_.
@@ -56,6 +57,10 @@ Ground/Unclassified
 
 :ref:`filters.smrf`
     Label ground/non-ground returns using [Pingel2013]_.
+
+:ref:`filters.trajectory`
+    Label ground/non-ground returns using estimate flight trajectory given
+    multi-return point cloud data with timing information.
 
 
 Noise
@@ -185,6 +190,7 @@ Pointwise Features
    filters.planefit
    filters.radialdensity
    filters.reciprocity
+   filters.zsmooth
 
 :ref:`filters.approximatecoplanar`
     Estimate pointwise planarity, based on k-nearest neighbors. Returns a new
@@ -229,6 +235,8 @@ Pointwise Features
     Compute the percentage of points that are considered uni-directional
     neighbors of a point.
 
+:ref:`filters.zsmooth`
+    Compute a smoothed 'Z' value based on the 'Z' value of neighboring points.
 
 Assignment
 ..........
@@ -304,6 +312,7 @@ Registration
 
    filters.cpd
    filters.icp
+   filters.teaser
 
 :ref:`filters.cpd`
     Compute and apply transformation between two point clouds using the
@@ -313,6 +322,8 @@ Registration
     Compute and apply transformation between two point clouds using the
     Iterative Closest Point algorithm.
 
+:ref:`filters.teaser`
+    Compute a rigid transformation between two point clouds using the teaser algorithm.
 
 Predefined
 ..........
@@ -353,10 +364,13 @@ Spatial
    :hidden:
 
    filters.crop
+   filters.geomdistance
 
 :ref:`filters.crop`
     Filter points inside or outside a bounding box or a polygon
 
+:ref:`filters.geomdistance`
+    Compute 2D distance from a polygon to points
 
 Resampling
 ..........
@@ -444,11 +458,15 @@ Position
    :glob:
    :hidden:
 
+   filters.expression
    filters.head
    filters.locate
    filters.mongo
    filters.range
    filters.tail
+
+:ref:`filters.expression`
+    Pass only points given an :ref:`expression <PDAL expression>`
 
 :ref:`filters.head`
     Return N points from beginning of the point cloud.

@@ -1,5 +1,5 @@
 function(pdal_target_compile_settings target)
-    set_property(TARGET ${target} PROPERTY CXX_STANDARD 11)
+    set_property(TARGET ${target} PROPERTY CXX_STANDARD 17)
     set_property(TARGET ${target} PROPERTY CXX_STANDARD_REQUIRED TRUE)
     if (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
         #
@@ -42,4 +42,14 @@ function(pdal_target_compile_settings target)
             -Wno-unknown-warning-option
         )
     endif()
+endfunction()
+
+
+
+function(pdal_lib_compile_settings target)
+    pdal_target_compile_settings(${target})
+
+    target_compile_options(${target} PRIVATE
+        -fvisibility=hidden
+        -fvisibility-inlines-hidden)
 endfunction()

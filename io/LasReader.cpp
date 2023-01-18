@@ -102,9 +102,7 @@ LasReader::LasReader() : d(new Private)
 
 LasReader::~LasReader()
 {
-#ifdef PDAL_HAVE_LAZPERF
     delete d->decompressor;
-#endif
 }
 
 
@@ -176,6 +174,7 @@ QuickInfo LasReader::inspect()
     qi.m_bounds = d->header.bounds;
     qi.m_srs = getSpatialReference();
     qi.m_valid = true;
+    qi.m_metadata = m_metadata;
 
     done(table);
 
@@ -185,9 +184,9 @@ QuickInfo LasReader::inspect()
 
 void LasReader::createStream()
 {
-    if (m_streamIf)
-        std::cerr << "Attempt to create stream twice!\n";
-    m_streamIf.reset(new LasStreamIf(m_filename));
+    if (!m_streamIf)
+        m_streamIf.reset(new LasStreamIf(m_filename));
+
     if (!m_streamIf->m_istream)
     {
         std::ostringstream oss;
@@ -226,7 +225,7 @@ void LasReader::initializeLocal(PointTableRef table, MetadataNode& m)
     d->header.fill(headerBuf, las::Header::Size14);
 
     uint64_t fileSize = Utils::fileSize(m_filename);
-    StringList errors = d->header.validate(fileSize);
+    StringList errors = d->header.validate(fileSize, d->opts.nosrs);
     if (errors.size())
         throwError(errors.front());
 
@@ -235,8 +234,18 @@ void LasReader::initializeLocal(PointTableRef table, MetadataNode& m)
         throwError("Unsupported LAS input point format: " +
             Utils::toString((int)d->header.pointFormat()) + ".");
 
-    // Read VLRs.  Clear the error state since we potentially over-read the header, leaving
-    // the stream in error, when things are really fine.
+    // Go peek into header and see if we are COPC
+    // Clear the error state since we potentially over-read the header, leaving
+    // the stream in error, when things are really fine for zero-point file.
+    stream->clear();
+    stream->seekg(377);
+    char copcBuf[4] {};
+    stream->read(copcBuf, 4);
+    m.add("copc", ::memcmp(copcBuf, "copc", 4) == 0);
+
+    // Read VLRs.
+    // Clear the error state since the seek or read above may have failed but the file could
+    // still be fine.
     stream->clear();
     stream->seekg(d->header.headerSize);
 
@@ -319,7 +328,6 @@ void LasReader::initializeLocal(PointTableRef table, MetadataNode& m)
     for (int i = 0; i < (int)d->vlrs.size(); ++i)
         las::addVlrMetadata(d->vlrs[i], "vlr_" + std::to_string(i), forward, m);
 
-    m_streamIf.reset();
 }
 
 

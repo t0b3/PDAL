@@ -40,6 +40,10 @@
 #include "Support.hpp"
 
 #include <iostream>
+#ifdef _WIN32
+#include <codecvt>
+#include <winioctl.h>
+#endif
 
 using namespace pdal;
 
@@ -262,8 +266,8 @@ TEST(FileUtilsTest, glob)
 TEST(FileUtilsTest, test_file_ops_with_unicode_paths)
 {
     // 1. Read Unicode encoded word, ie. Japanese, from .txt file.
-    // 2. Create temporary directory named using the word.
-    // 3. Create a file in the directory.
+    // 2. Create temporary directory named using the word. /word/word
+    // 3. Create a file in the directory. /word/word/word.unicode
     // 4. Exercise the FileUtils using the Unicode-based path.
 
     for (std::string japanese_txt: {"japanese-pr2135.txt", "japanese-pr2227.txt"})
@@ -273,10 +277,23 @@ TEST(FileUtilsTest, test_file_ops_with_unicode_paths)
         auto const japanese = FileUtils::readFileIntoString(japanese_txt);
         EXPECT_FALSE(japanese.empty());
 
-        auto const japanese_dir = Support::temppath(japanese);
+        auto const japanese_root_dir = Support::temppath(japanese);     
+        std::string tmp1(japanese_root_dir + "/"  + japanese + "/" + japanese + ".unicode");
+
+
+        std::string japanese_dir = FileUtils::getDirectory(tmp1) ;
         EXPECT_TRUE(FileUtils::createDirectories(japanese_dir));
-        std::string tmp1(japanese_dir + "/06LC743.unicode");
+
+        // test directoryList
+        auto const dirs = FileUtils::directoryList(japanese_root_dir);
+        EXPECT_GE(dirs.size(), 1U);
+        auto const dircount = std::count_if(dirs.cbegin(), dirs.cend(),
+            [&japanese_dir](std::string const& d) {
+                 return normalize(d + "/" ) == normalize(japanese_dir); });
+        EXPECT_EQ(dircount, 1);
+
         std::string tmp2(Support::temppath("nonunicode.tmp"));
+        
 
         // first, clean up from any previous test run
         FileUtils::deleteFile(tmp1);
@@ -294,7 +311,7 @@ TEST(FileUtilsTest, test_file_ops_with_unicode_paths)
         EXPECT_EQ(FileUtils::fileSize(tmp1), 3U);
 
         // glob for files with Unicode path
-        auto const filenames = FileUtils::glob(japanese_dir + "/*");
+        auto const filenames = FileUtils::glob(japanese_dir + "*");
         EXPECT_GE(filenames.size(), 1U);
         auto const tmp1count = std::count_if(filenames.cbegin(), filenames.cend(),
             [&tmp1](std::string const& f) { return normalize(f) == normalize(tmp1); });
@@ -315,7 +332,81 @@ TEST(FileUtilsTest, test_file_ops_with_unicode_paths)
         // delete test
         FileUtils::deleteFile(tmp2);
         EXPECT_FALSE(FileUtils::fileExists(tmp2));
-        FileUtils::deleteDirectory(japanese_dir);
-        EXPECT_FALSE(FileUtils::directoryExists(japanese_dir));
+        FileUtils::deleteDirectory(japanese_root_dir);
+        EXPECT_FALSE(FileUtils::directoryExists(japanese_root_dir));
     }
 }
+
+// Don't run if we are WIN32
+#if !defined(_WIN32) || defined(_WIN64)
+TEST(FileUtilsTest, map)
+{
+    std::ostream *out;
+    // This turns on sparse file support. Otherwise, we're going to make a huge
+    // file that won't fit on many filesystems and an error will occur. If we
+    // can't set the file to sparse, we just return.  UNIX filesystems I'm
+    // aware of support sparse files without this mess.
+#ifdef _WIN32
+    Support::Tempfile temp(false);
+    std::string filename = temp.filename();
+
+    auto toNative = [](const std::string& in) -> std::wstring
+    {
+        // TODO: C++11 define convert with static thread_local
+	std::wstring_convert<std::codecvt_utf8_utf16<uint16_t>, uint16_t> convert;
+	auto s = convert.from_bytes(in);
+	auto p = reinterpret_cast<wchar_t const*>(s.data());
+	return std::wstring(p, p + s.size());
+    };
+
+    auto f = CreateFileW(toNative(filename).data(), GENERIC_READ | GENERIC_WRITE,
+        0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD flags;
+    GetVolumeInformationByHandleW(f, NULL, 0, NULL, NULL, &flags, NULL, 0);
+    bool ok = false;
+    if (flags & FILE_SUPPORTS_SPARSE_FILES)
+    {
+        DWORD tmp;
+        ok = DeviceIoControl(f, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &tmp, NULL);
+    }
+    CloseHandle(f);
+    if (!ok)
+        return;
+    out = FileUtils::openExisting(filename);
+#else
+    Support::Tempfile temp(true);
+    std::string filename = temp.filename();
+
+    out = FileUtils::createFile(filename);
+#endif
+
+    out->seekp(50000);
+    *out << 1234;
+    out->write("Test", 4);
+    out->seekp(0x10FFFFFFFF);
+    *out << 5678;
+    out->write("Another.", 9);
+    FileUtils::closeFile(out);
+
+    auto ctx = FileUtils::mapFile(filename);
+    assert(ctx.addr());
+    char *c = reinterpret_cast<char *>(ctx.addr()) + 50000;
+
+    EXPECT_EQ(*c++, '1');
+    EXPECT_EQ(*c++, '2');
+    EXPECT_EQ(*c++, '3');
+    EXPECT_EQ(*c++, '4');
+    EXPECT_EQ(*c++, 'T');
+    EXPECT_EQ(*c++, 'e');
+    EXPECT_EQ(*c++, 's');
+    EXPECT_EQ(*c++, 't');
+
+    c = reinterpret_cast<char *>(ctx.addr()) + 0x10FFFFFFFF;
+    EXPECT_EQ(*c++, '5');
+    EXPECT_EQ(*c++, '6');
+    EXPECT_EQ(*c++, '7');
+    EXPECT_EQ(*c++, '8');
+    EXPECT_EQ(std::string(c), "Another.");
+    FileUtils::unmapFile(ctx);
+}
+#endif // guard for 32-bit windows

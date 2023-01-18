@@ -10,7 +10,7 @@ EPT format, including spatially accelerated queries and file reconstruction
 queries.
 
 Sample EPT datasets of hundreds of billions of points in size may be viewed
-with `Potree`_ or `Plasio`_.
+with `Potree`_.
 
 .. embed::
 
@@ -167,3 +167,6 @@ header
 query
     HTTP query parameters to forward for remote EPT endpoints, specified as a
     JSON object of key/value string pairs.
+
+ignore_unreadable
+    If set to true, ignore errors for missing or unreadable point data nodes.

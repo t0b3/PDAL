@@ -135,6 +135,9 @@ TEST(BpfTestBase, extra_bytes)
     std::vector<uint8_t> outbuf =
         Utils::base64_decode(n.findChild("header_data").value());
     EXPECT_EQ(memcmp(outbuf.data(), buf, sizeof(buf)), 0);
+    MetadataNode c = n.findChild("count");
+    EXPECT_EQ(!c.empty(), true);
+    EXPECT_EQ(c.value(), "1065");
 }
 
 TEST(BpfTestBase, bundled)
@@ -218,10 +221,10 @@ TEST(BpfTestBase, inspect)
         "GPSTime",
         "Green",
         "Intensity",
-        "Number_of_Returns",
+        "Number of Returns",
         "Red",
-        "Return_Information",
-        "Return_Number",
+        "Return Information",
+        "Return Number",
         "X",
         "Y",
         "Z"

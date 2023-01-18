@@ -145,6 +145,8 @@ inline Everything extractDim(INPUT& ext, Dimension::Type type)
             ext >> e.d;
             break;
         case Type::None:
+        default:
+            e.u64 = 0;
             break;
     }
     return e;
@@ -277,6 +279,8 @@ std::vector<std::string> PDAL_DLL maybeGlob(const std::string& path);
 double PDAL_DLL computeHausdorff(PointViewPtr srcView, PointViewPtr candView);
 std::pair<double, double> PDAL_DLL computeHausdorffPair(PointViewPtr srcView, PointViewPtr candView);
 double PDAL_DLL computeChamfer(PointViewPtr srcView, PointViewPtr candView);
+std::string PDAL_DLL tempFilename(const std::string& path);
+
 
 } // namespace Utils
 } // namespace pdal

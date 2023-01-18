@@ -4,12 +4,13 @@ echo "Configuring build type '$BUILD_TYPE'"
 mkdir build
 
 conda update -n base -c defaults conda
-conda install -c conda-forge python=3.9 draco pkg-config cmake ninja pkgconfig -y
+mamba install -c conda-forge abseil-cpp re2 pkg-config cmake ninja compilers -y
 
 if [ "$BUILD_TYPE" == "fixed" ]; then
 
     conda config --set channel_priority strict
-    conda install --yes --quiet gdal=3.0.4=py37hbb6b9fb_1 python=3.7 abseil-cpp  -y
+    conda install --yes draco
+    conda install --yes --quiet gdal=3.5.3 python=3.11 abseil-cpp  -y
     conda install --yes --quiet pdal  --only-deps -y
 
 else

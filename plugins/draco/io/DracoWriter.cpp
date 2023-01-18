@@ -183,7 +183,7 @@ void DracoWriter::parseDimensions(BasePointTable &table)
         log()->get(LogLevel::Info) << "Key: " << dimString << ", Value: "
             << dataType << std::endl;
         const auto it = dimMap.find(dim);
-        Dimension::Type pdalType = Dimension::type(dataType);
+        Dimension::Type pdalType = layout->dimType(dim);
         if (it != dimMap.end())
         {
             //get draco type associated with the current dimension in loop
@@ -406,10 +406,8 @@ void DracoWriter::write(const PointViewPtr view)
     for (PointId idx = 0; idx < view->size(); ++idx)
     {
         point.setPointId(idx);
-        const auto pointId = draco::PointIndex((uint32_t)idx);
-        for (auto &dim: m_dims) {
+        for (auto &dim: m_dims)
             addPoint(dim, point, idx);
-        }
     }
 
     draco::EncoderBuffer buffer;

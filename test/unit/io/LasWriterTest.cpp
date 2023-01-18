@@ -1185,7 +1185,7 @@ TEST(LasWriterTest, pdal_add_vlr)
           "description": "A description under 32 bytes",
           "record_id": 44,
           "user_id": "hobu",
-          "metadata": "point_length"
+          "metadata": "software_id"
           })"
     );
     Options writerOpts;
@@ -1212,28 +1212,20 @@ TEST(LasWriterTest, pdal_add_vlr)
     reader2.prepare(t2);
     reader2.execute(t2);
 
-    MetadataNode forward = reader2.getMetadata();
+    const VlrList& vlrs = reader2.header().vlrs();
+    EXPECT_EQ(vlrs.size(), 3u);
 
-    auto pred = [](MetadataNode temp)
-        { return Utils::startsWith(temp.name(), "vlr_"); };
+    const LasVLR& v0 = vlrs[0];
+    std::string s0(v0.data(), v0.data() + v0.dataLen());
+    EXPECT_EQ(s0, "this is some text");
 
-    MetadataNode root = reader2.getMetadata();
-    MetadataNodeList nodes = root.findChildren(pred);
-    EXPECT_EQ(nodes.size(), 3u);
+    const LasVLR& v1 = vlrs[1];
+    std::string s1(v1.data(), v1.data() + v1.dataLen());
+    EXPECT_EQ(s1, "this is some more text");
 
-    MetadataNode node = nodes[1].findChild("data");
-    std::vector<uint8_t> buf =
-        Utils::base64_decode(node.value());
-
-
-    EXPECT_EQ(memcmp(buf.data(), "this is some more text",
-        buf.size() - 1), 0);
-
-    node = nodes[2].findChild("data");
-    buf = Utils::base64_decode(node.value());
-
-    EXPECT_EQ(memcmp(buf.data(), "34",
-        buf.size() - 1), 0);
+    const LasVLR& v2 = vlrs[2];
+    std::string s2(v2.data(), v2.data() + v2.dataLen());
+    EXPECT_EQ(s2, "TerraScan");
 }
 
 // Make sure we can read an array of VLRs in a pipeline.
@@ -1604,7 +1596,9 @@ TEST(LasWriterTest, issue2320)
     }
 }
 
-TEST(LasWriterTest, synthetic_points)
+// Make sure we can translate a LAS 1.0 format file into a LAS 1.0 format file
+// (class flags are included in the classification byte, in both source and dest)
+TEST(LasWriterTest, las10_classification_from_las10_classification)
 {
     using namespace Dimension;
 
@@ -1647,6 +1641,163 @@ TEST(LasWriterTest, synthetic_points)
     EXPECT_EQ(view->size(), 1u);
     EXPECT_EQ(ClassLabel::Ground | ClassLabel::Synthetic,
         view->getFieldAs<uint8_t>(Id::Classification, 0));
+
+    FileUtils::deleteFile(FILENAME);
+}
+
+// Make sure we can translate a LAS 1.4 format file into a LAS 1.0 format file
+// (class flags are included in the classification byte in dest, but stored separately in source)
+TEST(LasWriterTest, las10_classification_from_las14_classflags)
+{
+    using namespace Dimension;
+
+    const std::string FILENAME(Support::temppath("synthetic_test.las"));
+    PointTable table;
+
+    table.layout()->registerDims({Id::X, Id::Y, Id::Z, Id::Classification, Id::ClassFlags});
+
+    BufferReader bufferReader;
+
+    PointViewPtr view(new PointView(table));
+    view->setField(Id::X, 0, 1.0);
+    view->setField(Id::Y, 0, 2.0);
+    view->setField(Id::Z, 0, 3.0);
+    view->setField(Id::Classification, 0, ClassLabel::Ground);
+    view->setField(Id::ClassFlags, 0, ClassLabel::Synthetic >> 5);
+    bufferReader.addView(view);
+
+    Options writerOps;
+    writerOps.add("filename", FILENAME);
+
+    LasWriter writer;
+    writer.setOptions(writerOps);
+    writer.setInput(bufferReader);
+
+    writer.prepare(table);
+    writer.execute(table);
+
+    Options readerOps;
+    readerOps.add("filename", FILENAME);
+
+    PointTable readTable;
+
+    LasReader reader;
+    reader.setOptions(readerOps);
+
+    reader.prepare(readTable);
+    PointViewSet viewSet = reader.execute(readTable);
+    EXPECT_EQ(viewSet.size(), 1u);
+    view = *viewSet.begin();
+    EXPECT_EQ(view->size(), 1u);
+    EXPECT_EQ(ClassLabel::Ground | ClassLabel::Synthetic,
+        view->getFieldAs<uint8_t>(Id::Classification, 0));
+
+    FileUtils::deleteFile(FILENAME);
+}
+
+// Make sure we can translate a LAS 1.0 format file into a LAS 1.4 format file
+// (class flags are included in the classification byte in source, but stored separately in dest)
+TEST(LasWriterTest, las14_classflags_from_las10_classification)
+{
+    using namespace Dimension;
+
+    const std::string FILENAME(Support::temppath("synthetic_test.las"));
+    PointTable table;
+
+    table.layout()->registerDims({Id::X, Id::Y, Id::Z, Id::Classification});
+
+    BufferReader bufferReader;
+
+    PointViewPtr view(new PointView(table));
+    view->setField(Id::X, 0, 1.0);
+    view->setField(Id::Y, 0, 2.0);
+    view->setField(Id::Z, 0, 3.0);
+    view->setField(Id::Classification, 0, ClassLabel::Ground | ClassLabel::Synthetic);
+    bufferReader.addView(view);
+
+    Options writerOps;
+    writerOps.add("filename", FILENAME);
+    writerOps.add("minor_version", "4");
+    writerOps.add("dataformat_id", "7");
+
+    LasWriter writer;
+    writer.setOptions(writerOps);
+    writer.setInput(bufferReader);
+
+    writer.prepare(table);
+    writer.execute(table);
+
+    Options readerOps;
+    readerOps.add("filename", FILENAME);
+
+    PointTable readTable;
+
+    LasReader reader;
+    reader.setOptions(readerOps);
+
+    reader.prepare(readTable);
+    PointViewSet viewSet = reader.execute(readTable);
+    EXPECT_EQ(viewSet.size(), 1u);
+    view = *viewSet.begin();
+    EXPECT_EQ(view->size(), 1u);
+    EXPECT_EQ(ClassLabel::Ground,
+        view->getFieldAs<uint8_t>(Id::Classification, 0));
+    EXPECT_EQ(ClassLabel::Synthetic >> 5,
+        view->getFieldAs<uint8_t>(Id::ClassFlags, 0));
+
+    FileUtils::deleteFile(FILENAME);
+}
+
+// Make sure we can translate a LAS 1.4 format file into a LAS 1.4 format file
+// (class flags are stored separately, in both source and dest)
+TEST(LasWriterTest, las14_classflags_from_las14_classflags)
+{
+    using namespace Dimension;
+
+    const std::string FILENAME(Support::temppath("synthetic_test.las"));
+    PointTable table;
+
+    table.layout()->registerDims({Id::X, Id::Y, Id::Z, Id::Classification, Id::ClassFlags});
+
+    BufferReader bufferReader;
+
+    PointViewPtr view(new PointView(table));
+    view->setField(Id::X, 0, 1.0);
+    view->setField(Id::Y, 0, 2.0);
+    view->setField(Id::Z, 0, 3.0);
+    view->setField(Id::Classification, 0, ClassLabel::Ground);
+    view->setField(Id::ClassFlags, 0, ClassLabel::Synthetic >> 5);
+    bufferReader.addView(view);
+
+    Options writerOps;
+    writerOps.add("filename", FILENAME);
+    writerOps.add("minor_version", "4");
+    writerOps.add("dataformat_id", "7");
+
+    LasWriter writer;
+    writer.setOptions(writerOps);
+    writer.setInput(bufferReader);
+
+    writer.prepare(table);
+    writer.execute(table);
+
+    Options readerOps;
+    readerOps.add("filename", FILENAME);
+
+    PointTable readTable;
+
+    LasReader reader;
+    reader.setOptions(readerOps);
+
+    reader.prepare(readTable);
+    PointViewSet viewSet = reader.execute(readTable);
+    EXPECT_EQ(viewSet.size(), 1u);
+    view = *viewSet.begin();
+    EXPECT_EQ(view->size(), 1u);
+    EXPECT_EQ(ClassLabel::Ground,
+        view->getFieldAs<uint8_t>(Id::Classification, 0));
+    EXPECT_EQ(ClassLabel::Synthetic >> 5,
+        view->getFieldAs<uint8_t>(Id::ClassFlags, 0));
 
     FileUtils::deleteFile(FILENAME);
 }

@@ -58,6 +58,10 @@ struct LasHeader::Private
     Private(las::Header& h, las::Srs& srs, las::VlrList& vlrs) : h(h), srs(srs), vlrs(vlrs)
     {}
 
+    Private(const Private& src) : h(src.h), srs(src.srs), vlrs(src.vlrs),
+        interfaceVlrs(src.interfaceVlrs)
+    {}
+
     las::Header& h;
     las::Srs& srs;
     las::VlrList& vlrs;
@@ -68,6 +72,24 @@ struct LasHeader::Private
 LasHeader::LasHeader(las::Header& h, las::Srs& srs, las::VlrList& vlrs) :
     d(std::make_unique<Private>(h, srs, vlrs))
 {}
+
+LasHeader::LasHeader(const LasHeader& src) : d(std::make_unique<Private>(*(src.d)))
+{}
+
+LasHeader::LasHeader(LasHeader&& src) : d(std::move(src.d))
+{}
+
+LasHeader& LasHeader::operator=(const LasHeader& src)
+{
+    d.reset(new Private(*src.d));
+    return *this;
+}
+
+LasHeader& LasHeader::operator=(LasHeader&& src)
+{
+    d.swap(src.d);
+    return *this;
+}
 
 LasHeader::~LasHeader()
 {}
@@ -465,7 +487,12 @@ Dimension::IdList LasHeader::usedDims() const
 
 const LasVLR *LasHeader::findVlr(const std::string& userId, uint16_t recordId) const
 {
-    for (const LasVLR& v : vlrs())
+    // Update interface VLRs before searching.
+    d->interfaceVlrs.clear();
+    for (las::Vlr& v : d->vlrs)
+        d->interfaceVlrs.emplace_back(&v);
+
+    for (const LasVLR& v : d->interfaceVlrs)
         if (v.matches(userId, recordId))
             return &v;
     return nullptr;
@@ -492,7 +519,7 @@ void LasHeader::initialize(LogPtr log, uintmax_t fileSize, bool nosrs)
 const VlrList& LasHeader::vlrs() const
 {
     d->interfaceVlrs.clear();
-    for (las::Vlr& v : d->vlrs) 
+    for (las::Vlr& v : d->vlrs)
         d->interfaceVlrs.emplace_back(&v);
     return d->interfaceVlrs;
 }

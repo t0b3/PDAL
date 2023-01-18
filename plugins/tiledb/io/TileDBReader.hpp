@@ -34,7 +34,9 @@
 
 #pragma once
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 
 #include <iostream>
 
@@ -103,6 +105,7 @@ private:
     point_count_t m_resultSize;
     point_count_t m_startTimeStamp;
     point_count_t m_endTimeStamp;
+    bool m_strict;
     bool m_complete;
     bool m_stats;
     BOX4D m_bbox;

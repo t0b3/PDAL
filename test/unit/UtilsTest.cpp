@@ -34,6 +34,7 @@
 
 #include <pdal/pdal_test_main.hpp>
 
+#include <cmath>
 #include <sstream>
 #include <vector>
 
@@ -448,6 +449,60 @@ TEST(UtilsTest, naninf)
     EXPECT_EQ(Utils::toString(d), "-Infinity");
 }
 
+TEST(UtilsTest, toString)
+{
+    int i = 12365565;
+    EXPECT_EQ(Utils::toString(i), "12365565");
+
+    double d = 1.2365;
+    EXPECT_EQ(Utils::toString(d), "1.2365");
+}
+
+TEST(UtilsTest, StringStreamClassicLocale)
+{
+    Utils::StringStreamClassicLocale ss;
+    double d = 456.34;
+    ss << d;
+    EXPECT_EQ(ss.str(), "456.34");
+
+    ss.clear();
+    ss.str("");
+
+    ss << "123456789";
+    int i = 0;
+    ss >> i;
+    EXPECT_EQ(i, 123456789);
+}
+
+TEST(UtilsTest, OStringStreamClassicLocale)
+{
+    Utils::OStringStreamClassicLocale ss;
+    double d = 456.34;
+    ss << d;
+    EXPECT_EQ(ss.str(), "456.34");
+
+    ss.clear();
+    ss.str("");
+
+    int i = 123456789;
+    ss << i;
+    EXPECT_EQ(ss.str(), "123456789");
+}
+
+TEST(UtilsTest, IStringStreamClassicLocale)
+{
+    Utils::IStringStreamClassicLocale ss("123456789");
+    int i = 0;
+    ss >> i;
+    EXPECT_EQ(i, 123456789);
+
+    ss.clear();
+    ss.str("80123.45 987654");
+    double d = 0;
+    ss >> d >> i;
+    EXPECT_EQ(d, 80123.45);
+    EXPECT_EQ(i, 987654);
+}
 
 TEST(UtilsTest, numeric_cast)
 {
@@ -515,67 +570,34 @@ TEST(UtilsTest, extractor)
     }
 }
 
-// Don't run if we are WIN32
-#if !defined(_WIN32) || defined(_WIN64)
-TEST(UtilsTest, map)
+TEST(UtilsTest, fromString)
 {
-    Support::Tempfile temp;
+    int i;
+    Utils::StatusWithReason ok;
+    ok = Utils::fromString("12345", i);
+    EXPECT_EQ(i, 12345);
+    EXPECT_EQ(ok.code(), 0);
+    ok = Utils::fromString("12345.123", i);
+    EXPECT_EQ(i, 12345);
+    EXPECT_NE(ok.code(), 0);
 
-    std::string filename = temp.filename();
+    std::string s;
+    ok = Utils::fromString("12345", s);
+    EXPECT_EQ(s, "12345");
+    EXPECT_EQ(ok.code(), 0);
 
-    std::ostream *out;
-    // This turns on sparse file support. Otherwise, we're going to make a huge
-    // file that won't fit on many filesystems and an error will occur. If we
-    // can't set the file to sparse, we just return.  UNIX filesystems I'm
-    // aware of support sparse files without this mess.
-#ifdef _WIN32
-    auto f = CreateFileA(filename.data(), GENERIC_READ | GENERIC_WRITE,
-        0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-    DWORD flags;
-    GetVolumeInformationByHandleW(f, NULL, 0, NULL, NULL, &flags, NULL, 0);
-    bool ok = false;
-    if (flags & FILE_SUPPORTS_SPARSE_FILES)
-    {
-        DWORD tmp;
-        ok = DeviceIoControl(f, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &tmp, NULL);
-    }
-    CloseHandle(f);
-    if (!ok)
-        return;
-    out = FileUtils::openExisting(filename);
-#else
-    out = FileUtils::createFile(filename);
-#endif
-
-    out->seekp(50000);
-    *out << 1234;
-    out->write("Test", 4);
-    out->seekp(0x10FFFFFFFF);
-    *out << 5678;
-    out->write("Another.", 9);
-    FileUtils::closeFile(out);
-
-    auto ctx = FileUtils::mapFile(filename);
-    assert(ctx.addr());
-    char *c = reinterpret_cast<char *>(ctx.addr()) + 50000;
-
-    EXPECT_EQ(*c++, '1');
-    EXPECT_EQ(*c++, '2');
-    EXPECT_EQ(*c++, '3');
-    EXPECT_EQ(*c++, '4');
-    EXPECT_EQ(*c++, 'T');
-    EXPECT_EQ(*c++, 'e');
-    EXPECT_EQ(*c++, 's');
-    EXPECT_EQ(*c++, 't');
-
-    c = reinterpret_cast<char *>(ctx.addr()) + 0x10FFFFFFFF;
-    EXPECT_EQ(*c++, '5');
-    EXPECT_EQ(*c++, '6');
-    EXPECT_EQ(*c++, '7');
-    EXPECT_EQ(*c++, '8');
-    EXPECT_EQ(std::string(c), "Another.");
-    FileUtils::unmapFile(ctx);
+    double d;
+    ok = Utils::fromString("12345.34", d);
+    EXPECT_EQ(d, 12345.34);
+    EXPECT_EQ(ok.code(), 0);
+    ok = Utils::fromString("12345", d);
+    EXPECT_EQ(d, 12345.0);
+    EXPECT_EQ(ok.code(), 0);
+    ok = Utils::fromString("foo", d);
+    EXPECT_NE(ok.code(), 0);
+    ok = Utils::fromString("NaN", d);
+    EXPECT_TRUE(std::isnan(d));
+    EXPECT_EQ(ok.code(), 0);
 }
-#endif // guard for 32-bit windows
 
 }

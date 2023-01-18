@@ -43,6 +43,7 @@
 #include <filters/CropFilter.hpp>
 #include <filters/ReprojectionFilter.hpp>
 #include <pdal/SrsBounds.hpp>
+#include <pdal/Writer.hpp>
 #include <pdal/util/FileUtils.hpp>
 #include <pdal/private/gdal/GDALUtils.hpp>
 
@@ -79,31 +80,12 @@ namespace
             Support::datapath("ept/ellipsoid-binary/ept.json"));
     const std::string ellipsoidEptZstandardPath(
             Support::datapath("ept/ellipsoid-zstandard/ept.json"));
+    const std::string ellipsoidEptNoPointsPath(
+            Support::datapath("ept/ellipsoid-nopoints/ept.json"));
 
     const point_count_t ellipsoidNumPoints(100000);
     const BOX3D ellipsoidBoundsConforming(-8242746, 4966506, -50,
             -8242446, 4966706, 50);
-}
-
-TEST(EptReaderTest, protocol)
-{
-    Options opts;
-    opts.add("filename", "ept://http://testfile");
-
-    EptReader reader;
-    reader.setOptions(opts);
-
-    bool gotEx = false;
-    try
-    {
-        reader.preview();
-    }
-    catch (const pdal_error& err)
-    {
-        EXPECT_TRUE(strstr(err.what(), "ept.json"));
-        gotEx = true;
-    }
-    EXPECT_TRUE(gotEx);
 }
 
 TEST(EptReaderTest, inspect)
@@ -202,6 +184,82 @@ TEST(EptReaderTest, fullReadBinary)
     }
 
     EXPECT_EQ(np, ellipsoidNumPoints);
+}
+
+TEST(EptReaderTest, unreadableDataFailure)
+{
+    Options options;
+    options.add("filename", ellipsoidEptNoPointsPath);
+
+    PointTable table;
+
+    EptReader reader;
+    reader.setOptions(options);
+    reader.prepare(table);
+
+    // This dataset is missing its root point data node, so we should fail here.
+    EXPECT_THROW(reader.execute(table), pdal_error);
+}
+
+TEST(EptReaderTest, unreadableDataIgnored)
+{
+    Options options;
+    options.add("filename", ellipsoidEptNoPointsPath);
+    options.add("ignore_unreadable", true);
+
+    PointTable table;
+
+    EptReader reader;
+    reader.setOptions(options);
+    reader.prepare(table);
+
+    const auto set(reader.execute(table));
+    std::size_t np = 0;
+    for (const auto& view : set)
+    {
+        np += view->size();
+    }
+
+    // This is missing its root point data node (which is its only node), so we
+    // should simply get no points here.
+    EXPECT_EQ(np, 0);
+}
+
+TEST(EptReaderTest, unreadableDataIgnoredStreaming)
+{
+    class TestWriter : public Writer, public Streamable
+    {
+        std::string getName() const
+        { return "writers.test"; }
+
+        bool processOne(PointRef& p)
+        {
+            count++;
+            return true;
+        }
+
+    public:
+        int count = 0;
+    };
+
+    Options options;
+    options.add("filename", ellipsoidEptNoPointsPath);
+    options.add("ignore_unreadable", true);
+
+    EptReader reader;
+    reader.setOptions(options);
+
+    TestWriter writer;
+    writer.setInput(reader);
+
+    FixedPointTable table(1000);
+    writer.prepare(table);
+
+    writer.execute(table);
+
+    // This is missing its root point data node (which is its only node), so we
+    // should simply get no points here.
+    EXPECT_EQ(writer.count, 0);
 }
 
 TEST(EptReaderTest, fullReadZstandard)
@@ -419,7 +477,7 @@ TEST(EptReaderTest, boundedRead3d)
     EXPECT_EQ(np, 45930u);
 }
 
-TEST(EptReaderTest, originRead)
+TEST(EptReaderTest, originReadVersion1_0_0)
 {
     uint64_t np(0);
     for (uint64_t origin(0); origin < 4; ++origin)
@@ -446,6 +504,35 @@ TEST(EptReaderTest, originRead)
     }
 
     EXPECT_EQ(np, expNumPoints);
+}
+
+TEST(EptReaderTest, originRead)
+{
+    // This dataset is version 1.1.0, so make sure we handle its origin query
+    // properly.
+    EptReader reader;
+    Options options;
+    options.add("filename", ellipsoidEptBinaryPath);
+    options.add("origin", "ellipsoid");
+    reader.setOptions(options);
+    PointTable table;
+    reader.prepare(table);
+    const auto set(reader.execute(table));
+
+    uint64_t np(0);
+//    uint64_t o;
+    for (const PointViewPtr& view : set)
+    {
+        np += view->size();
+        /**
+        for (point_count_t i(0); i < view->size(); ++i)
+        {
+            o = view->getFieldAs<uint64_t>(Dimension::Id::OriginId, i);
+        }
+        **/
+    }
+
+    EXPECT_EQ(np, ellipsoidNumPoints);
 }
 
 TEST(EptReaderTest, badOriginQuery)
