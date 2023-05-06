@@ -63,6 +63,6 @@ if (WITH_TESTS)
         LINK_WITH
             ${filter_libname}
         INCLUDES
-            "${PDAL_VENDOR_DIR}/eigen"
+            "${EIGEN3_INCLUDE_DIR}"
     )
 endif()

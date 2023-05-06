@@ -9,7 +9,7 @@ PDAL_ADD_PLUGIN(libname filter trajectory
     LINK_WITH
         ${CERES_LIBRARIES}
     INCLUDES
-        ${PDAL_VENDOR_DIR}/eigen
+        ${EIGEN3_INCLUDE_DIR}
 )
 
 if (WITH_TRAJECTORY_TEST)

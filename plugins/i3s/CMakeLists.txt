@@ -20,7 +20,7 @@ PDAL_ADD_PLUGIN(i3s_reader_libname reader i3s
     INCLUDES
         ${NLOHMANN_INCLUDE_DIR}
         ${PDAL_VENDOR_DIR}
-        ${PDAL_VENDOR_DIR}/eigen
+        ${EIGEN3_INCLUDE_DIR}
 )
 target_compile_definitions(${i3s_reader_libname}
     PRIVATE
@@ -41,7 +41,7 @@ PDAL_ADD_PLUGIN(slpk_reader_libname reader slpk
     INCLUDES
         ${NLOHMANN_INCLUDE_DIR}
         ${PDAL_VENDOR_DIR}
-        ${PDAL_VENDOR_DIR}/eigen
+        ${EIGEN3_INCLUDE_DIR}
 )
 target_compile_definitions(${slpk_reader_libname}
     PRIVATE
@@ -61,7 +61,7 @@ if (WITH_TESTS)
             ${PDAL_SRC_DIR}/private/MathUtils.cpp
         INCLUDES
             ${NLOHMANN_INCLUDE_DIR}
-            ${PDAL_VENDOR_DIR}/eigen
+            ${EIGEN3_INCLUDE_DIR}
     )
 
     if (BUILD_I3S_TESTS)

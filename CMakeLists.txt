@@ -139,6 +139,7 @@ include(${PDAL_CMAKE_DIR}/schema-validator.cmake)
 include(${PDAL_CMAKE_DIR}/lazperf.cmake)
 include(${PDAL_CMAKE_DIR}/openssl.cmake) # Optional
 include(${PDAL_CMAKE_DIR}/utfcpp.cmake)
+include(${PDAL_CMAKE_DIR}/eigen.cmake)
 
 #------------------------------------------------------------------------------
 # generate the pdal_features.hpp header
@@ -258,7 +259,7 @@ target_include_directories(${PDAL_BASE_LIB_NAME}
         ${ROOT_DIR}
         ${PROJECT_BINARY_DIR}/include
         ${PDAL_VENDOR_DIR}
-        ${PDAL_VENDOR_DIR}/eigen
+        ${EIGEN3_INCLUDE_DIR}
         ${LIBXML2_INCLUDE_DIR}
         ${ZSTD_INCLUDE_DIRS}
         ${NLOHMANN_INCLUDE_DIR}
