@@ -35,6 +35,7 @@ RUN \
         sqlite-dev \
         zstd-dev \
         libcrypto1.1 \
+        libunwind \
         xerces-c-dev \
         json-c-dev \
         proj-dev@edgecomm \
