@@ -27,4 +27,5 @@ dependencies:
   - re2  # [linux]
   - abseil-cpp  # [linux]
   - ccache
+  - libunwind
 
